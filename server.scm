@@ -76,6 +76,43 @@ EOF
         (send-to-client fd "Simple Echo Server\n\n")
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd _WRITE)))
 
+(define (write-handler fd)
+    ;; epoll tells us to write to socket
+    (let ((buf (hash-table-ref fd-write-table fd)))
+        (##net#write fd buf (string-length buf)))
+
+    ;; write prompt to client after sending buf
+    (##net#write fd "> " 2)
+
+    ;; clear out write buffer
+    (hash-table-set! fd-write-table fd "")
+
+    ;; update epoll to watch for a read event on this fd
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _READ))
+
+(define (read-handler fd)
+    ;; epoll tells us to read from socket
+    (let* ((len 4096)
+           (buf (make-string len)))
+        (let loop ((rbytes 0))
+            (unless (= rbytes len)
+                (begin
+                    (let ((res (##net#read fd buf (- len rbytes))))
+                        (if (= res 0)
+                            (begin
+                                ;; remove fd from epoll and close socket
+                                (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+                                (##net#close fd))
+                            (unless (string-index  buf #\newline)
+                                ;; keep reading if no newline
+                                (loop (+ rbytes res))))))))
+
+        (let ((i (string-index buf #\newline)))
+            (unless (eq? i #f)
+                (send-to-client fd (substring buf 0 (+ i 1)))
+                ;; update epoll to watch for a write event on this fd
+                (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))
+
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
     (if (eq? ls '())
@@ -86,39 +123,10 @@ EOF
             (if (eq? sfd fd)
                 (accept-fd sfd)
                 (cond ((= (bitwise-and (cdr pair) _WRITE) _WRITE)
-                        ;; epoll tells us to write to socket
-                        (let ((buf (hash-table-ref fd-write-table fd)))
-                            (##net#write fd buf (string-length buf)))
-
-                        ;; write prompt to client after sending buf
-                        (##net#write fd "> " 2)
-
-                        ;; clear out write buffer
-                        (hash-table-set! fd-write-table fd "")
-
-                        ;; update epoll to watch for a read event on this fd
-                        (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _READ))
+                        (write-handler fd))
 
                       ((= (bitwise-and (cdr pair) _READ) _READ)
-                        ;; epoll tells us to read from socket
-                        (let* ((len 4096)
-                               (buf (make-string 4096)))
-                            (let loop ((rbytes 0))
-                                (unless (= rbytes len)
-                                    (begin
-                                        (let ((res (##net#read fd buf (- len rbytes))))
-                                            (if (= res 0)
-                                                (begin
-                                                    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
-                                                    (##net#close fd))
-                                                (unless (string-index  buf #\newline)
-                                                    (loop (+ rbytes res))))))))
-
-                            (let* ((i (string-index buf #\newline)))
-                                (unless (eq? i #f)
-                                    (send-to-client fd (substring buf 0 (+ i 1)))
-                                    ;; update epoll to watch for a write event on this fd
-                                    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))))
+                        (read-handler fd))))
 
             ;; loop over rest of (fd . events) list of pairs
             (fd-event-list-handler (cdr ls)))))
