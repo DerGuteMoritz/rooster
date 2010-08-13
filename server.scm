@@ -96,16 +96,15 @@ EOF
            (buf (make-string len)))
         (let loop ((rbytes 0))
             (unless (= rbytes len)
-                (begin
-                    (let ((res (##net#read fd buf (- len rbytes))))
-                        (if (= res 0)
-                            (begin
-                                ;; remove fd from epoll and close socket
-                                (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
-                                (##net#close fd))
-                            (unless (string-index  buf #\newline)
-                                ;; keep reading if no newline
-                                (loop (+ rbytes res))))))))
+                (let ((res (##net#read fd buf (- len rbytes))))
+                    (if (= res 0)
+                        (begin
+                            ;; remove fd from epoll and close socket
+                            (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+                            (##net#close fd))
+                        (unless (string-index  buf #\newline)
+                            ;; keep reading if no newline
+                            (loop (+ rbytes res)))))))
 
         (let ((i (string-index buf #\newline)))
             (unless (eq? i #f)
