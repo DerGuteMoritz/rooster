@@ -1,7 +1,10 @@
 (declare (uses tcp))
 
 ;; required for make-hash-table (compiled vs. interpreted)
-(require-extension srfi-69)
+(require 'srfi-69)
+
+;; for string-index
+(require 'srfi-13)
 
 (foreign-declare #<<EOF
 #include <sys/epoll.h>
@@ -41,6 +44,7 @@ EOF
 (define ##net#accept (foreign-lambda int "accept" int c-pointer c-pointer))
 (define ##net#write (foreign-lambda int "write" int c-string int))
 (define ##net#read (foreign-lambda int "read" int scheme-pointer int))
+(define ##net#close (foreign-lambda int "close" int))
 
 ;; tcp-listen is an abstraction from tcp.scm and sets up a
 ;; nonblocking server socket.
@@ -83,7 +87,6 @@ EOF
                 (accept-fd sfd)
                 (cond ((= (bitwise-and (cdr pair) _WRITE) _WRITE)
                         ;; epoll tells us to write to socket
-
                         (let ((buf (hash-table-ref fd-write-table fd)))
                             (##net#write fd buf (string-length buf)))
 
@@ -98,22 +101,24 @@ EOF
 
                       ((= (bitwise-and (cdr pair) _READ) _READ)
                         ;; epoll tells us to read from socket
+                        (let* ((len 4096)
+                               (buf (make-string 4096)))
+                            (let loop ((rbytes 0))
+                                (unless (= rbytes len)
+                                    (begin
+                                        (let ((res (##net#read fd buf (- len rbytes))))
+                                            (if (= res 0)
+                                                (begin
+                                                    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+                                                    (##net#close fd))
+                                                (unless (string-index  buf #\newline)
+                                                    (loop (+ rbytes res))))))))
 
-                        ;; TODO: I think it may make sense to use C for actual socket I/O...
-                        ;;       Unless, of course, I can do a better job in scheme of reading N bytes,
-                        ;;       checking for "\n", reading more bytes, etc...
-
-                        (let ((buf (make-string 4096)))
-                            (##net#read fd buf 4096)
-
-                            ;; splitting the buf on "\n" and taking its car just returns
-                            ;; the string up to that point, so append a "\n" to it and put
-                            ;; it in the client's write buffer.
-                            (send-to-client fd (string-append
-                                (car (string-split buf "\n")) "\n"))
-
-                            ;; update epoll to watch for a write event on this fd
-                            (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))
+                            (let* ((i (string-index buf #\newline)))
+                                (unless (eq? i #f)
+                                    (send-to-client fd (substring buf 0 (+ i 1)))
+                                    ;; update epoll to watch for a write event on this fd
+                                    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))))
 
             ;; loop over rest of (fd . events) list of pairs
             (fd-event-list-handler (cdr ls)))))
