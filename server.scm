@@ -95,35 +95,37 @@ EOF
     ;; update epoll to watch for a read event on this fd
     (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _READ))
 
+(define (read-loop fd rbytes maxlen)
+    (let ((rbuf (make-string maxlen)))
+        (unless (= rbytes maxlen)
+            (let ((res (##net#read fd rbuf (- maxlen rbytes))))
+                (if (= res 0)
+                    (begin
+                        ;; remove fd from epoll and close socket
+                        (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+                        (##net#close fd))
+                    (unless (string-index  rbuf #\newline)
+                        ;; keep reading if no newline
+                        (read-loop (+ rbytes res))))))
+        rbuf))
+
 (define (read-handler fd)
     ;; epoll tells us to read from socket
     (let* ((len 4096)
-           (buf (make-string len)))
-        (let loop ((rbytes 0))
-            (unless (= rbytes len)
-                (let ((res (##net#read fd buf (- len rbytes))))
-                    (if (= res 0)
-                        (begin
-                            ;; remove fd from epoll and close socket
-                            (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
-                            (##net#close fd))
-                        (unless (string-index  buf #\newline)
-                            ;; keep reading if no newline
-                            (loop (+ rbytes res)))))))
+           (buf (read-loop fd 0 len)))
 
         (let ((i (string-index buf #\newline)))
             (unless (eq? i #f)
-                (let loop ((descriptors fd-list))
+                (let fdloop ((descriptors fd-list))
                     (unless (eq? descriptors '())
-                        (let ((d (car descriptors)))
+                        (let ((d (car descriptors))
+                              (writebuf (string-append (substring buf 0 (+ i 1)) "\n")))
                             (if (eq? d fd)
-                                (send-to-client d
-                                    (string-append (substring buf 0 (+ i 1)) "\n"))
-                                (send-to-client d
-                                    (string-append "\n" (substring buf 0 (+ i 1)) "\n"))))
-                        (loop (cdr descriptors))))
-                ;;(send-to-client fd (substring buf 0 (+ i 1)))
-                ;; update epoll to watch for a write event on this fd
+                                (send-to-client d writebuf)
+                                (send-to-client d (string-append "\n" writebuf))))
+                        (fdloop (cdr descriptors))))
+
+                ;; Not necessary since send-to-client does this too
                 (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))
 
 (define (fd-event-list-handler ls)
