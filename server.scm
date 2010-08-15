@@ -57,6 +57,8 @@ EOF
 (define fd-write-table (make-hash-table))
 (define fd-read-table (make-hash-table))
 
+(define fd-list '())
+
 (define (init-client fd)
     ;; set client's i/o buffers to empty strings
     (hash-table-set! fd-write-table fd (make-string 0))
@@ -67,12 +69,15 @@ EOF
     ;; `str` to the client's write buffer until it's time to really
     ;; write on the socket (epoll tells us when to write)
     (let ((buf (hash-table-ref fd-write-table fd)))
-        (hash-table-set! fd-write-table fd (string-append buf str))))
+        (hash-table-set! fd-write-table fd (string-append buf str)))
+
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE))
 
 (define (accept-fd sfd)
     (let ((fd (##net#accept sfd #f #f)))
         (setnonblock fd)
         (init-client fd)
+        (set! fd-list (append fd-list (list fd)))
         (send-to-client fd "Simple Echo Server\n\n")
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd _WRITE)))
 
@@ -108,14 +113,22 @@ EOF
 
         (let ((i (string-index buf #\newline)))
             (unless (eq? i #f)
-                (send-to-client fd (substring buf 0 (+ i 1)))
+                (let loop ((descriptors fd-list))
+                    (unless (eq? descriptors '())
+                        (let ((d (car descriptors)))
+                            (if (eq? d fd)
+                                (send-to-client d
+                                    (string-append (substring buf 0 (+ i 1)) "\n"))
+                                (send-to-client d
+                                    (string-append "\n" (substring buf 0 (+ i 1)) "\n"))))
+                        (loop (cdr descriptors))))
+                ;;(send-to-client fd (substring buf 0 (+ i 1)))
                 ;; update epoll to watch for a write event on this fd
                 (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))))
 
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
-    (if (eq? ls '())
-        '()
+    (unless (eq? ls '())
         (let* ((pair (car ls))
                (sfd (tcp-listener-fileno listener))
                (fd (car pair)))
