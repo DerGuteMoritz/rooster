@@ -1,0 +1,7 @@
+Run make to generate rooster.so
+
+    $ make
+
+To use rooster.so:
+
+    (require 'rooster)

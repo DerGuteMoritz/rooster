@@ -1,4 +1,6 @@
-(declare (uses tcp))
+(declare
+    (uses tcp)
+    (export ev-main-loop))
 
 ;; required for make-hash-table (compiled vs. interpreted)
 (require 'srfi-69)
@@ -46,10 +48,9 @@ EOF
 (define ##net#read (foreign-lambda int "read" int scheme-pointer int))
 (define ##net#close (foreign-lambda int "close" int))
 
+;; _server_fd and epfd are both initialized in ev-main-loop
 (define _server_fd)
-
-;; initialize epoll
-(define epfd (##epoll#epoll_create))
+(define epfd)
 
 ;; hash tables for doing fd lookups -- these manage i/o buffers
 (define fd-write-table (make-hash-table))
@@ -162,13 +163,18 @@ EOF
     (let ((li (vector->list vec)))
         (fd-event-list-handler li)))
 
+;; pass server stuff here (like port number) and a request handler
+;; so the server can pass requests to the programmer-defined handler
 (define (ev-main-loop)
     (let* ((listener (tcp-listen 6666))
            (sfd (tcp-listener-fileno listener)))
+
+        ;; set global server fd
         (set! _server_fd sfd)
+        (set! epfd (##epoll#epoll_create))
+
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD sfd _READ)
+
         (let loop ()
             (##epoll#epoll_wait epfd 200)
             (loop))))
-
-(ev-main-loop)
