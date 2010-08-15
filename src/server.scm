@@ -46,9 +46,7 @@ EOF
 (define ##net#read (foreign-lambda int "read" int scheme-pointer int))
 (define ##net#close (foreign-lambda int "close" int))
 
-;; tcp-listen is an abstraction from tcp.scm and sets up a
-;; nonblocking server socket.
-(define listener (tcp-listen 6666))
+(define _server_fd)
 
 ;; initialize epoll
 (define epfd (##epoll#epoll_create))
@@ -144,12 +142,11 @@ EOF
 
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
-    (unless (eq? ls '())
+    (unless (null? ls)
         (let* ((pair (car ls))
-               (sfd (tcp-listener-fileno listener))
                (fd (car pair)))
-            (if (eq? sfd fd)
-                (accept-fd sfd)
+            (if (eq? fd _server_fd)
+                (accept-fd _server_fd)
                 (cond ((= (bitwise-and (cdr pair) _WRITE) _WRITE)
                         (write-handler fd))
 
@@ -165,11 +162,13 @@ EOF
     (let ((li (vector->list vec)))
         (fd-event-list-handler li)))
 
-(define (ev-main-loop listener)
-    (let ((sfd (tcp-listener-fileno listener)))
+(define (ev-main-loop)
+    (let* ((listener (tcp-listen 6666))
+           (sfd (tcp-listener-fileno listener)))
+        (set! _server_fd sfd)
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD sfd _READ)
         (let loop ()
             (##epoll#epoll_wait epfd 200)
             (loop))))
 
-(ev-main-loop listener)
+(ev-main-loop)
