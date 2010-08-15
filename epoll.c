@@ -20,6 +20,7 @@ int _epoll_ctl(int epfd, int op, int fd, int events) {
     memset(&event, 0, sizeof(event));
     event.events = events;
     event.data.fd = fd;
+
     if (-1 == (res = epoll_ctl(epfd, op, fd, &event))) {
         perror("epoll_ctl");
     }
