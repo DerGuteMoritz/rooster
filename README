@@ -5,3 +5,9 @@ Run make to generate rooster.so
 To use rooster.so:
 
     (require 'rooster)
+
+    ;; echo input back to client
+    (define (handler fd rbuf)
+        (send-to-client fd rbuf))
+
+    (run-rooster handler)
