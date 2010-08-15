@@ -64,6 +64,22 @@ EOF
     (hash-table-set! fd-write-table fd (make-string 0))
     (hash-table-set! fd-read-table fd (make-string 0)))
 
+(define (filter-out-fd fd)
+    ;; builds a new list after filtering out fd
+    (let loop ((li fd-list) (newlist '()))
+        (if (null? li)
+            newlist
+            (if (eq? fd (car li))
+                (loop (cdr li) newlist)
+                (loop (cdr li) (append newlist (list (car li))))))))
+
+(define (remove-client fd)
+    (set! fd-list (filter-out-fd fd))
+    (hash-table-remove fd-write-table fd)
+    (hash-table-remove fd-read-table fd)
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+    (##net#close fd))
+
 (define (send-to-client fd str)
     ;; this function doesn't actually _send_ to the client. it appends
     ;; `str` to the client's write buffer until it's time to really
@@ -77,7 +93,7 @@ EOF
     (let ((fd (##net#accept sfd #f #f)))
         (setnonblock fd)
         (init-client fd)
-        (set! fd-list (append fd-list (list fd)))
+        (set! fd-list (cons fd fd-list))
         (send-to-client fd "Simple Echo Server\n\n")
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd _WRITE)))
 
@@ -100,10 +116,7 @@ EOF
         (unless (= rbytes maxlen)
             (let ((res (##net#read fd rbuf (- maxlen rbytes))))
                 (if (= res 0)
-                    (begin
-                        ;; remove fd from epoll and close socket
-                        (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
-                        (##net#close fd))
+                    (remove-client fd)
                     (unless (string-index  rbuf #\newline)
                         ;; keep reading if no newline
                         (read-loop (+ rbytes res))))))
