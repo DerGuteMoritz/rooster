@@ -1,6 +1,6 @@
 (declare
     (uses tcp)
-    (export ev-main-loop))
+    (export run-rooster send-to-client send-to-all remove-client))
 
 ;; required for make-hash-table (compiled vs. interpreted)
 (require 'srfi-69)
@@ -48,15 +48,17 @@ EOF
 (define ##net#read (foreign-lambda int "read" int scheme-pointer int))
 (define ##net#close (foreign-lambda int "close" int))
 
-;; _server_fd and epfd are both initialized in ev-main-loop
+;; _server_fd and epfd are both initialized in run-rooster
 (define _server_fd)
 (define epfd)
+(define fd-list '())
+
+;; this is set to the request handler passed through run-rooster
+(define _RequestHandler)
 
 ;; hash tables for doing fd lookups -- these manage i/o buffers
 (define fd-write-table (make-hash-table))
 (define fd-read-table (make-hash-table))
-
-(define fd-list '())
 
 (define (init-client fd)
     ;; set client's i/o buffers to empty strings
@@ -138,7 +140,7 @@ EOF
     ;; epoll tells us to read from socket
     (let* ((len 4096)
            (buf (read-loop fd len)))
-        (send-to-all buf fd)
+        (_RequestHandler fd buf)
         (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))
 
 (define (fd-event-list-handler ls)
@@ -165,13 +167,14 @@ EOF
 
 ;; pass server stuff here (like port number) and a request handler
 ;; so the server can pass requests to the programmer-defined handler
-(define (ev-main-loop)
+(define (run-rooster request-handler)
     (let* ((listener (tcp-listen 6666))
            (sfd (tcp-listener-fileno listener)))
 
         ;; set global server fd
         (set! _server_fd sfd)
         (set! epfd (##epoll#epoll_create))
+        (set! _RequestHandler request-handler)
 
         (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD sfd _READ)
 
