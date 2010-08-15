@@ -1,3 +1,15 @@
+/*
+ *  rooster - epoll server
+ *
+ *      http://github.com/davidreynolds/rooster
+ *
+ *  Copyright 2010 David Reynolds
+ *  All rights reserved.
+ *
+ *  Use and distribution licensed under BSD license. See
+ *  LICENSE for full text of BSD license.
+ */
+
 #include <sys/epoll.h>
 #include <fcntl.h>
 #include <string.h>
