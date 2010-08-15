@@ -1,3 +1,6 @@
+Requires linux + epoll at the moment.
+I'd like to fallback to poll if epoll isn't available.
+
 Run make to generate rooster.so
 
     $ make
@@ -6,8 +9,9 @@ To use rooster.so:
 
     (require 'rooster)
 
-    ;; echo input back to client
     (define (handler fd rbuf)
+        ;; echo input back to client
         (send-to-client fd rbuf))
 
+    ;; pass handler to rooster
     (run-rooster handler)
