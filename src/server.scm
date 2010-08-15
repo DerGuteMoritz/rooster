@@ -12,7 +12,11 @@
 
 (declare
     (uses tcp)
-    (export run-rooster send-to-client send-to-all remove-client))
+    (export run-rooster
+            send-to-client
+            send-to-all
+            remove-client
+            rooster-epoll-ctl))
 
 ;; required for make-hash-table (compiled vs. interpreted)
 (require 'srfi-69)
@@ -48,6 +52,10 @@ EOF
 
 ;; use foreign-safe-lambda because this C function calls back into Chicken
 (define ##epoll#epoll_wait (foreign-safe-lambda void "_epoll_wait" int int))
+
+;; exported wrapper around epoll_ctl
+(define (rooster-epoll-ctl flags fd iostate)
+    (##epoll#epoll_ctl epfd flags fd iostate))
 
 ;; define this here because it's not exported by tcp.scm
 (define setnonblock (foreign-lambda* bool ((int fd))
@@ -90,7 +98,7 @@ EOF
     (set! fd-list (filter-out-fd fd))
     (hash-table-remove fd-write-table fd)
     (hash-table-remove fd-read-table fd)
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0)
+    (rooster-epoll-ctl _EPOLL_CTL_DEL fd 0)
     (##net#close fd))
 
 (define (send-to-client fd str)
@@ -100,7 +108,7 @@ EOF
     (let ((buf (hash-table-ref fd-write-table fd)))
         (hash-table-set! fd-write-table fd (string-append buf str)))
 
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE))
+    (rooster-epoll-ctl _EPOLL_CTL_MOD fd _WRITE))
 
 (define (send-to-all buf sender-fd)
     (let fdloop ((fds fd-list))
@@ -117,7 +125,7 @@ EOF
         (init-client fd)
         (set! fd-list (cons fd fd-list))
         (send-to-client fd "Simple Echo Server\n\n")
-        (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd _WRITE)))
+        (rooster-epoll-ctl _EPOLL_CTL_ADD fd _WRITE)))
 
 (define (write-handler fd)
     ;; epoll tells us to write to socket
@@ -131,7 +139,7 @@ EOF
     (hash-table-set! fd-write-table fd "")
 
     ;; update epoll to watch for a read event on this fd
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _READ))
+    (rooster-epoll-ctl _EPOLL_CTL_MOD fd _READ))
 
 (define (read-loop fd maxlen)
     (let ((rbuf (make-string maxlen)))
@@ -153,7 +161,7 @@ EOF
     (let* ((len 4096)
            (buf (read-loop fd len)))
         (_RequestHandler fd buf)
-        (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd _WRITE)))
+        (rooster-epoll-ctl _EPOLL_CTL_MOD fd _WRITE)))
 
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
@@ -188,7 +196,7 @@ EOF
         (set! epfd (##epoll#epoll_create))
         (set! _RequestHandler request-handler)
 
-        (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD sfd _READ)
+        (rooster-epoll-ctl _EPOLL_CTL_ADD sfd _READ)
 
         (let loop ()
             (##epoll#epoll_wait epfd 200)
