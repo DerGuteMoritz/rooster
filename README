@@ -21,3 +21,12 @@ To use rooster.so:
 
     ;; pass handler to rooster
     (run-rooster handler)
+
+To run the examples, make rooster and then do:
+
+    $ csi examples/echo/echo.scm
+
+You'll then be dropped into the Chicken Scheme Interpreter and from another shell prompt
+you can
+
+    $ telnet localhost 6666
