@@ -13,10 +13,13 @@
 (declare
     (uses tcp)
     (export run-rooster
+            fd-list
             send-to-client
             send-to-all
             remove-client
-            rooster-epoll-ctl))
+            rooster-epoll-add
+            rooster-epoll-mod
+            rooster-epoll-del))
 
 ;; required for make-hash-table (compiled vs. interpreted)
 (require 'srfi-69)
@@ -54,8 +57,14 @@ EOF
 (define ##epoll#epoll_wait (foreign-safe-lambda void "_epoll_wait" int int))
 
 ;; exported wrapper around epoll_ctl
-(define (rooster-epoll-ctl flags fd iostate)
-    (##epoll#epoll_ctl epfd flags fd iostate))
+(define (rooster-epoll-add fd iostate)
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd iostate))
+
+(define (rooster-epoll-mod fd iostate)
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd iostate))
+
+(define (rooster-epoll-del fd)
+    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0))
 
 ;; define this here because it's not exported by tcp.scm
 (define setnonblock (foreign-lambda* bool ((int fd))
@@ -98,7 +107,7 @@ EOF
     (set! fd-list (filter-out-fd fd))
     (hash-table-remove fd-write-table fd)
     (hash-table-remove fd-read-table fd)
-    (rooster-epoll-ctl _EPOLL_CTL_DEL fd 0)
+    (rooster-epoll-del fd)
     (##net#close fd))
 
 (define (send-to-client fd str)
@@ -108,7 +117,7 @@ EOF
     (let ((buf (hash-table-ref fd-write-table fd)))
         (hash-table-set! fd-write-table fd (string-append buf str)))
 
-    (rooster-epoll-ctl _EPOLL_CTL_MOD fd _WRITE))
+    (rooster-epoll-mod fd _WRITE))
 
 (define (send-to-all buf sender-fd)
     (let fdloop ((fds fd-list))
@@ -124,22 +133,21 @@ EOF
         (setnonblock fd)
         (init-client fd)
         (set! fd-list (cons fd fd-list))
-        (send-to-client fd "Simple Echo Server\n\n")
-        (rooster-epoll-ctl _EPOLL_CTL_ADD fd _WRITE)))
+        (rooster-epoll-add fd _WRITE)
+
+        ;; Let the request handler handle new sockets
+        (_RequestHandler fd "")))
 
 (define (write-handler fd)
     ;; epoll tells us to write to socket
     (let ((buf (hash-table-ref fd-write-table fd)))
         (##net#write fd buf (string-length buf)))
 
-    ;; write prompt to client after sending buf
-    (##net#write fd "\n> " 3)
-
     ;; clear out write buffer
     (hash-table-set! fd-write-table fd "")
 
     ;; update epoll to watch for a read event on this fd
-    (rooster-epoll-ctl _EPOLL_CTL_MOD fd _READ))
+    (rooster-epoll-mod fd _READ))
 
 (define (read-loop fd maxlen)
     (let ((rbuf (make-string maxlen)))
@@ -161,7 +169,7 @@ EOF
     (let* ((len 4096)
            (buf (read-loop fd len)))
         (_RequestHandler fd buf)
-        (rooster-epoll-ctl _EPOLL_CTL_MOD fd _WRITE)))
+        (rooster-epoll-mod fd _WRITE)))
 
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
@@ -196,7 +204,7 @@ EOF
         (set! epfd (##epoll#epoll_create))
         (set! _RequestHandler request-handler)
 
-        (rooster-epoll-ctl _EPOLL_CTL_ADD sfd _READ)
+        (rooster-epoll-add sfd _READ)
 
         (let loop ()
             (##epoll#epoll_wait epfd 200)
