@@ -15,52 +15,12 @@
      fd-list
      send-to-client
      send-to-all
-     remove-client
-     rooster-epoll-add
-     rooster-epoll-mod
-     rooster-epoll-del)
+     remove-client)
 
     (import scheme chicken foreign)
-    (use tcp srfi-13 srfi-69)
+    (use tcp srfi-13 srfi-69 epoll)
 
-(foreign-declare #<<EOF
-#include <sys/epoll.h>
-#include <fcntl.h>
-EOF
-)
-
-(define-foreign-variable _EPOLLIN int "EPOLLIN")
-(define-foreign-variable _EPOLLPRI int "EPOLLPRI")
-(define-foreign-variable _EPOLLOUT int "EPOLLOUT")
-(define-foreign-variable _EPOLLERR int "EPOLLERR")
-(define-foreign-variable _EPOLLHUP int "EPOLLHUP")
-(define-foreign-variable _EPOLLRDHUP int "EPOLLRDHUP")
-(define-foreign-variable _EPOLLONESHOT int "EPOLLONESHOT")
-(define-foreign-variable _EPOLLET int "EPOLLET")
-
-(define _READ _EPOLLIN)
-(define _WRITE _EPOLLOUT)
-(define _ERROR (bitwise-ior _EPOLLERR _EPOLLHUP _EPOLLRDHUP))
-
-(define _EPOLL_CTL_ADD 1)
-(define _EPOLL_CTL_DEL 2)
-(define _EPOLL_CTL_MOD 3)
-
-(define ##epoll#epoll_create (foreign-lambda int "_epoll_create"))
-(define ##epoll#epoll_ctl (foreign-lambda int "_epoll_ctl" int int int int))
-
-;; use foreign-safe-lambda because this C function calls back into Chicken
-(define ##epoll#epoll_wait (foreign-safe-lambda void "_epoll_wait" int int))
-
-;; exported wrapper around epoll_ctl
-(define (rooster-epoll-add fd iostate)
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_ADD fd iostate))
-
-(define (rooster-epoll-mod fd iostate)
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_MOD fd iostate))
-
-(define (rooster-epoll-del fd)
-    (##epoll#epoll_ctl epfd _EPOLL_CTL_DEL fd 0))
+(foreign-declare "#include <fcntl.h>")
 
 ;; define this here because it's not exported by tcp.scm
 (define setnonblock (foreign-lambda* bool ((int fd))
@@ -103,7 +63,7 @@ EOF
     (set! fd-list (filter-out-fd fd))
     (hash-table-remove! fd-write-table fd)
     (hash-table-remove! fd-read-table fd)
-    (rooster-epoll-del fd)
+    (epoll-delete epfd fd)
     (##net#close fd))
 
 (define (send-to-client fd str)
@@ -113,7 +73,7 @@ EOF
     (let ((buf (hash-table-ref fd-write-table fd)))
         (hash-table-set! fd-write-table fd (string-append buf str)))
 
-    (rooster-epoll-mod fd _WRITE))
+    (epoll-modify epfd fd _WRITE))
 
 (define (send-to-all buf sender-fd)
     (let fdloop ((fds fd-list))
@@ -129,7 +89,7 @@ EOF
         (setnonblock fd)
         (init-client fd)
         (set! fd-list (cons fd fd-list))
-        (rooster-epoll-add fd _WRITE)
+        (epoll-add epfd fd _WRITE)
 
         ;; Let the request handler handle new sockets
         (_RequestHandler fd "")))
@@ -143,7 +103,7 @@ EOF
     (hash-table-set! fd-write-table fd "")
 
     ;; update epoll to watch for a read event on this fd
-    (rooster-epoll-mod fd _READ))
+    (epoll-modify epfd fd _READ))
 
 (define (read-loop fd maxlen)
     (let ((rbuf (make-string maxlen)))
@@ -165,8 +125,9 @@ EOF
     (let* ((len 4096)
            (buf (read-loop fd len)))
         (_RequestHandler fd buf)
-        (rooster-epoll-mod fd _WRITE)))
+        (epoll-modify epfd fd _WRITE)))
 
+;; this function is passed to epoll-wait as a callback
 (define (fd-event-list-handler ls)
     ;; takes a list of (fd . events) pairs
     (unless (null? ls)
@@ -183,12 +144,6 @@ EOF
             ;; loop over rest of (fd . events) list of pairs
             (fd-event-list-handler (cdr ls)))))
 
-;; callback from epoll_wait
-(define-external (SCM_epoll_wait_cb (scheme-object vec)) void
-    ;; _epoll_wait returns a vector of pairs, so convert to a list of pairs
-    (let ((li (vector->list vec)))
-        (fd-event-list-handler li)))
-
 ;; pass server stuff here (like port number) and a request handler
 ;; so the server can pass requests to the programmer-defined handler
 (define (run-rooster request-handler)
@@ -197,12 +152,13 @@ EOF
 
         ;; set global server fd
         (set! _server_fd sfd)
-        (set! epfd (##epoll#epoll_create))
+        (set! epfd (epoll-create))
         (set! _RequestHandler request-handler)
 
-        (rooster-epoll-add sfd _READ)
+        (epoll-add epfd sfd _READ)
 
         (let loop ()
-            (##epoll#epoll_wait epfd 200)
+            ;; pass epoll callback to epoll-wait
+            (epoll-wait epfd 200 fd-event-list-handler)
             (loop))))
 )
