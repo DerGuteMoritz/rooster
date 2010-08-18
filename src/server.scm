@@ -10,22 +10,18 @@
 ;;  LICENSE for full text of BSD license.
 ;;
 
-(declare
-    (uses tcp)
-    (export run-rooster
-            fd-list
-            send-to-client
-            send-to-all
-            remove-client
-            rooster-epoll-add
-            rooster-epoll-mod
-            rooster-epoll-del))
+(module rooster
+    (run-rooster
+     fd-list
+     send-to-client
+     send-to-all
+     remove-client
+     rooster-epoll-add
+     rooster-epoll-mod
+     rooster-epoll-del)
 
-;; required for make-hash-table (compiled vs. interpreted)
-(require 'srfi-69)
-
-;; for string-index
-(require 'srfi-13)
+    (import scheme chicken foreign)
+    (use tcp srfi-13 srfi-69)
 
 (foreign-declare #<<EOF
 #include <sys/epoll.h>
@@ -105,8 +101,8 @@ EOF
 
 (define (remove-client fd)
     (set! fd-list (filter-out-fd fd))
-    (hash-table-remove fd-write-table fd)
-    (hash-table-remove fd-read-table fd)
+    (hash-table-remove! fd-write-table fd)
+    (hash-table-remove! fd-read-table fd)
     (rooster-epoll-del fd)
     (##net#close fd))
 
@@ -209,3 +205,4 @@ EOF
         (let loop ()
             (##epoll#epoll_wait epfd 200)
             (loop))))
+)

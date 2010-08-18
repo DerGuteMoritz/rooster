@@ -1,4 +1,6 @@
-(require 'rooster)
+(load "rooster")
+(import rooster)
+
 (require 'srfi-13)
 
 (define-syntax define-class
