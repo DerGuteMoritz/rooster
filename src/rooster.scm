@@ -28,10 +28,10 @@
     "if (val == -1) return(0);"
     "return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);"))
 
-(define ##net#accept (foreign-lambda int "accept" int c-pointer c-pointer))
-(define ##net#write (foreign-lambda int "write" int c-string int))
-(define ##net#read (foreign-lambda int "read" int scheme-pointer int))
-(define ##net#close (foreign-lambda int "close" int))
+(define net-accept (foreign-lambda int "accept" int c-pointer c-pointer))
+(define net-write (foreign-lambda int "write" int c-string int))
+(define net-read (foreign-lambda int "read" int scheme-pointer int))
+(define net-close (foreign-lambda int "close" int))
 
 ;; _server_fd and epfd are both initialized in run-rooster
 (define _server_fd)
@@ -64,7 +64,7 @@
     (hash-table-remove! fd-write-table fd)
     (hash-table-remove! fd-read-table fd)
     (epoll-delete epfd fd)
-    (##net#close fd))
+    (net-close fd))
 
 (define (send-to-client fd str)
     ;; this function doesn't actually _send_ to the client. it appends
@@ -85,7 +85,7 @@
             (fdloop (cdr fds)))))
 
 (define (accept-fd sfd)
-    (let ((fd (##net#accept sfd #f #f)))
+    (let ((fd (net-accept sfd #f #f)))
         (setnonblock fd)
         (init-client fd)
         (set! fd-list (cons fd fd-list))
@@ -97,7 +97,7 @@
 (define (write-handler fd)
     ;; epoll tells us to write to socket
     (let ((buf (hash-table-ref fd-write-table fd)))
-        (##net#write fd buf (string-length buf)))
+        (net-write fd buf (string-length buf)))
 
     ;; clear out write buffer
     (hash-table-set! fd-write-table fd "")
@@ -115,7 +115,7 @@
                     (substring rbuf 0 maxlen))
 
                   (else
-                    (let ((res (##net#read fd rbuf (- maxlen rbytes))))
+                    (let ((res (net-read fd rbuf (- maxlen rbytes))))
                         (if (= res 0)
                             (remove-client fd)
                             (rloop (+ rbytes res)))))))))
