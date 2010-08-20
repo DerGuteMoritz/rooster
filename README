@@ -1,10 +1,5 @@
-Rooster is a server built in Chicken Scheme and C. It uses epoll from a C interface.
-The basic idea behind Rooster is that you write request handlers in Chicken Scheme
-similar to a web server. You pass these handlers to the event loop and Rooster calls
-back into your handlers with a socket fd and the input buffer. This lets your application
-process inputs and lets you use Rooster to handle the lower level stuff.
-
-For the time being, Rooster is mostly standalone. I'm going to be breaking out the core epoll stuff into its own egg and then build up Rooster on top of that.
+Rooster is a server built in Chicken Scheme.
+Rooster makes use of the epoll egg that I wrote (http://github.com/davidreynolds/epoll) to handle socket events.
 
 Requires linux + epoll at the moment.
 I'd like to fallback to poll if epoll isn't available.
