@@ -54,7 +54,7 @@
             (let ((d (car fds)))
                 (if (eq? sender-fd d)
                     (send-to-client d buf)
-                    (send-to-client d (string-append "\n" buf))))
+                    (send-to-client d (string-append "\r\n" buf))))
             (fdloop (cdr fds)))))
 
 (define (accept-fd sfd)
@@ -74,31 +74,32 @@
 
     ;; clear out write buffer
     (set-fd-write-buffer! fd "")
+    (set-fd-read-buffer! fd "")
 
     ;; update epoll to watch for a read event on this fd
     (epoll-modify epfd fd _READ))
 
-(define (read-loop fd maxlen)
-    (let ((rbuf (make-string maxlen)))
-        (let rloop ((rbytes 0))
-            (cond ((string-index rbuf #\newline)
-                    (substring rbuf 0 rbytes))
-
-                  ((>= rbytes maxlen)
-                    (substring rbuf 0 maxlen))
-
-                  (else
-                    (let ((res (net-read fd rbuf (- maxlen rbytes))))
-                        (if (= res 0)
-                            (remove-client fd)
-                            (rloop (+ rbytes res)))))))))
+(define (read-from-socket fd)
+    ;; read in 4kb blocks
+    (let* ((rbuf (make-string 4096))
+          (res (net-read fd rbuf 4096)))
+        (if (= res 0)
+            (remove-client fd)
+            (substring rbuf 0 res))))
 
 (define (read-handler fd)
     ;; epoll tells us to read from socket
-    (let* ((len 4096)
-           (buf (read-loop fd len)))
-        (_RequestHandler fd buf)
-        (epoll-modify epfd fd _WRITE)))
+    (let ((len 104857600)
+           (rcur (string-length (fd-read-buffer fd)))
+           (buf (read-from-socket fd)))
+
+        (if (< (+ rcur (string-length buf)) len)
+            (set-fd-read-buffer! fd (string-append (fd-read-buffer fd) buf)))
+
+        (if (string-index buf #\newline)
+            (begin
+                (_RequestHandler fd (fd-read-buffer fd))
+                (epoll-modify epfd fd _WRITE)))))
 
 ;; this function is passed to epoll-wait as a callback
 (define (fd-event-list-handler ls)
