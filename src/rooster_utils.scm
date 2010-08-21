@@ -54,5 +54,3 @@ EOF
 (define (remove-client-buffers! fd)
     (hash-table-remove! _fd_write_table fd)
     (hash-table-remove! _fd_read_table fd))
-
-;)

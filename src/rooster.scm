@@ -134,5 +134,3 @@
             ;; pass epoll callback to epoll-wait
             (epoll-wait epfd 200 fd-event-list-handler)
             (loop))))
-
-;)
