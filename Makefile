@@ -1,7 +1,7 @@
 srcdir = ./src
 builddir = ./build
 
-OBJECTS = $(builddir)/rooster.o
+OBJECTS = $(builddir)/rooster.o $(builddir)/rooster_utils.o
 
 all: rooster
 

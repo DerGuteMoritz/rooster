@@ -10,8 +10,7 @@ Run make to generate rooster.so
 
 To use rooster.so:
 
-    (load "rooster")
-    (import rooster)
+    (require 'rooster)
 
     (define (handler fd rbuf)
         ;; echo input back to client

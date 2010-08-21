@@ -10,45 +10,16 @@
 ;;  LICENSE for full text of BSD license.
 ;;
 
-(module rooster
-    (run-rooster
-     fd-list
-     send-to-client
-     send-to-all
-     remove-client)
+(declare
+    (uses rooster-utils tcp srfi-13 srfi-69)
+    (export run-rooster fd-list send-to-client send-to-all))
 
-    (import scheme chicken foreign)
-    (use tcp srfi-13 srfi-69 epoll)
-
-(foreign-declare "#include <fcntl.h>")
-
-;; define this here because it's not exported by tcp.scm
-(define setnonblock (foreign-lambda* bool ((int fd))
-    "int val = fcntl(fd, F_GETFL, 0);"
-    "if (val == -1) return(0);"
-    "return(fcntl(fd, F_SETFL, val | O_NONBLOCK) != -1);"))
-
-(define net-accept (foreign-lambda int "accept" int c-pointer c-pointer))
-(define net-write (foreign-lambda int "write" int c-string int))
-(define net-read (foreign-lambda int "read" int scheme-pointer int))
-(define net-close (foreign-lambda int "close" int))
+(use epoll)
 
 ;; _server_fd and epfd are both initialized in run-rooster
 (define _server_fd)
 (define epfd)
 (define fd-list '())
-
-;; this is set to the request handler passed through run-rooster
-(define _RequestHandler)
-
-;; hash tables for doing fd lookups -- these manage i/o buffers
-(define fd-write-table (make-hash-table))
-(define fd-read-table (make-hash-table))
-
-(define (init-client fd)
-    ;; set client's i/o buffers to empty strings
-    (hash-table-set! fd-write-table fd (make-string 0))
-    (hash-table-set! fd-read-table fd (make-string 0)))
 
 (define (filter-out-fd fd)
     ;; builds a new list after filtering out fd
@@ -61,17 +32,19 @@
 
 (define (remove-client fd)
     (set! fd-list (filter-out-fd fd))
-    (hash-table-remove! fd-write-table fd)
-    (hash-table-remove! fd-read-table fd)
+    (remove-client-buffers! fd)
     (epoll-delete epfd fd)
     (net-close fd))
+
+;; this is set to the request handler passed through run-rooster
+(define _RequestHandler)
 
 (define (send-to-client fd str)
     ;; this function doesn't actually _send_ to the client. it appends
     ;; `str` to the client's write buffer until it's time to really
     ;; write on the socket (epoll tells us when to write)
-    (let ((buf (hash-table-ref fd-write-table fd)))
-        (hash-table-set! fd-write-table fd (string-append buf str)))
+    (let ((buf (fd-write-buffer fd)))
+        (set-fd-write-buffer! fd (string-append buf str)))
 
     (epoll-modify epfd fd _WRITE))
 
@@ -96,11 +69,11 @@
 
 (define (write-handler fd)
     ;; epoll tells us to write to socket
-    (let ((buf (hash-table-ref fd-write-table fd)))
+    (let ((buf (fd-write-buffer fd)))
         (net-write fd buf (string-length buf)))
 
     ;; clear out write buffer
-    (hash-table-set! fd-write-table fd "")
+    (set-fd-write-buffer! fd "")
 
     ;; update epoll to watch for a read event on this fd
     (epoll-modify epfd fd _READ))
@@ -161,4 +134,5 @@
             ;; pass epoll callback to epoll-wait
             (epoll-wait epfd 200 fd-event-list-handler)
             (loop))))
-)
+
+;)
