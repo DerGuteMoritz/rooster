@@ -82,7 +82,7 @@
 (define (read-from-socket fd)
     ;; read in 4kb blocks
     (let* ((rbuf (make-string 4096))
-          (res (net-read fd rbuf 4096)))
+           (res (net-read fd rbuf 4096)))
         (if (= res 0)
             (remove-client fd)
             (substring rbuf 0 res))))
@@ -90,8 +90,8 @@
 (define (read-handler fd)
     ;; epoll tells us to read from socket
     (let ((len 104857600)
-           (rcur (string-length (fd-read-buffer fd)))
-           (buf (read-from-socket fd)))
+          (rcur (string-length (fd-read-buffer fd)))
+          (buf (read-from-socket fd)))
 
         (if (< (+ rcur (string-length buf)) len)
             (set-fd-read-buffer! fd (string-append (fd-read-buffer fd) buf)))
