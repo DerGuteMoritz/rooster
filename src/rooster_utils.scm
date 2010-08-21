@@ -10,13 +10,6 @@
 ;;  LICENSE for full text of BSD license.
 ;;
 
-;(module rooster-utils
-;    (setnonblock net-accept net-write net-read net-close init-client
-;     fd-read-buffer fd-write-buffer remove-client-buffers! set-fd-write-buffer!)
-;
-;    (import scheme chicken foreign)
-;    (use tcp srfi-69 epoll)
-
 (declare
     (unit rooster-utils)
     (uses tcp srfi-69)
