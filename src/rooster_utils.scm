@@ -14,7 +14,8 @@
     (unit rooster-utils)
     (uses tcp srfi-69)
     (export setnonblock net-accept net-write net-read net-close init-client
-            fd-read-buffer fd-write-buffer remove-client-buffers! set-fd-write-buffer!))
+            fd-read-buffer fd-write-buffer remove-client-buffers!
+            set-fd-write-buffer! set-fd-read-buffer!))
 
 (foreign-declare "#include <fcntl.h>")
 
@@ -50,6 +51,9 @@ EOF
 
 (define (set-fd-write-buffer! fd str)
     (hash-table-set! _fd_write_table fd str))
+
+(define (set-fd-read-buffer! fd str)
+    (hash-table-set! _fd_read_table fd str))
 
 (define (remove-client-buffers! fd)
     (hash-table-remove! _fd_write_table fd)
