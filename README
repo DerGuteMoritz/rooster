@@ -10,22 +10,25 @@ Run make to generate rooster.so
 
     $ make
 
-To use rooster.so:
+To use rooster.so for a basic web server:
 
     (require 'rooster)
 
-    (define (handler fd rbuf)
-        ;; echo input back to client
-        (send-to-client fd rbuf))
+    (define (handler fd buf)
+        (let* ((msg "Hello, world")
+               (headers (format
+                            "HTTP/1.1 200 OK\r\nContent-Length:~A\r\n\r\n"
+                            (string-length msg))))
+            (send-to-client fd (string-append headers msg))))
 
     ;; pass handler to rooster
     (run-rooster handler)
 
 To run the examples, make rooster and then do:
 
-    $ csi examples/echo/echo.scm
+    $ csi examples/webserver/webserver.scm
 
 You'll then be dropped into the Chicken Scheme Interpreter and from another shell prompt
 you can
 
-    $ telnet localhost 6666
+    $ curl localhost:6666
