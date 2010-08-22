@@ -1,6 +1,8 @@
 Rooster is a server built in Chicken Scheme.
 Rooster makes use of the epoll egg that I wrote (http://github.com/davidreynolds/epoll) to handle socket events.
 
+Right now I'm working on making Rooster into a web server. Don't expect too much right now.
+
 Requires linux + epoll at the moment.
 I'd like to fallback to poll if epoll isn't available.
 
