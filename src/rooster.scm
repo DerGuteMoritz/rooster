@@ -12,7 +12,7 @@
 
 (declare
     (uses rooster-utils tcp srfi-13 srfi-69)
-    (export run-rooster fd-list send-to-client send-to-all))
+    (export run-rooster fd-list send-to-client send-to-all remove-client))
 
 (use epoll)
 
@@ -76,8 +76,8 @@
     (set-fd-write-buffer! fd "")
     (set-fd-read-buffer! fd "")
 
-    ;; update epoll to watch for a read event on this fd
-    (epoll-modify epfd fd _READ))
+    ;; TODO: only remove-client if connection: close
+    (remove-client fd))
 
 (define (read-from-socket fd)
     ;; read in 4kb blocks
@@ -93,13 +93,14 @@
           (rcur (string-length (fd-read-buffer fd)))
           (buf (read-from-socket fd)))
 
-        (if (< (+ rcur (string-length buf)) len)
-            (set-fd-read-buffer! fd (string-append (fd-read-buffer fd) buf)))
+        (unless (eq? buf 0)
+            (if (< (+ rcur (string-length buf)) len)
+                (set-fd-read-buffer! fd (string-append (fd-read-buffer fd) buf)))
 
-        (if (string-index buf #\newline)
-            (begin
-                (_RequestHandler fd (fd-read-buffer fd))
-                (epoll-modify epfd fd _WRITE)))))
+            (if (string-suffix? "\r\n\r\n" buf)
+                (begin
+                    (_RequestHandler fd (fd-read-buffer fd))
+                    (epoll-modify epfd fd _WRITE))))))
 
 ;; this function is passed to epoll-wait as a callback
 (define (fd-event-list-handler ls)
