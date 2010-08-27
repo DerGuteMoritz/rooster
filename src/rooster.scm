@@ -62,10 +62,10 @@
         (setnonblock fd)
         (init-client fd)
         (set! fd-list (cons fd fd-list))
-        (epoll-add epfd fd _WRITE)
+        (epoll-add epfd fd _READ)
 
-        ;; Let the request handler handle new sockets
-        (_RequestHandler fd "")))
+        ;; For reading the request sent from client (headers, body, etc).
+        (read-handler fd)))
 
 (define (write-handler fd)
     ;; epoll tells us to write to socket
