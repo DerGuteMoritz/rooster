@@ -87,6 +87,22 @@
             (remove-client fd)
             (substring rbuf 0 res))))
 
+(define (_on_headers fd data)
+    ;; parse headers contained in buf
+    (let* ((eol (string-contains data "\r\n"))
+           (start-line (string-split (substring data 0 eol) " "))
+           (method (car start-line))
+           (uri (cadr start-line))
+           (version (caddr start-line)))
+
+        (if (not (string-prefix? "HTTP/" version))
+            (remove-client fd)
+
+            ;; TODO: Next step would be to parse content-length and N bytes
+            ;; Then pass request to _RequestHandler instead of a string.
+            ;; That let's _RequestHandler do controller dispatching.
+            (_RequestHandler fd ""))))
+
 (define (read-handler fd)
     ;; epoll tells us to read from socket
     (let ((len 104857600)
@@ -97,10 +113,11 @@
             (if (< (+ rcur (string-length buf)) len)
                 (set-fd-read-buffer! fd (string-append (fd-read-buffer fd) buf)))
 
-            (if (string-suffix? "\r\n\r\n" buf)
-                (begin
-                    (_RequestHandler fd (fd-read-buffer fd))
-                    (epoll-modify epfd fd _WRITE))))))
+            ;; eoh = end of headers
+            (let* ((fdbuf (fd-read-buffer fd))
+                   (eoh (string-contains fdbuf "\r\n\r\n"))
+                   (headers (substring fdbuf 0 eoh)))
+                        (_on_headers fd headers)))))
 
 ;; this function is passed to epoll-wait as a callback
 (define (fd-event-list-handler ls)
