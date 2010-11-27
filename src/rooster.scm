@@ -98,7 +98,7 @@
         (if (not (string-prefix? "HTTP/" version))
             (remove-client fd)
 
-            ;; TODO: Next step would be to parse content-length and N bytes
+            ;; TODO: Next step would be to parse content-length and read N bytes
             ;; Then pass request to _RequestHandler instead of a string.
             ;; That let's _RequestHandler do controller dispatching.
             (_RequestHandler fd ""))))
